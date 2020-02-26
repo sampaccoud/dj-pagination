@@ -53,8 +53,11 @@ except ImportError:  # Django < 2.0
 from django.template.loader import select_template
 from django.utils.text import unescape_string_literal
 
-# TODO, import this normally later on
-from dj_pagination.settings import *
+from dj_pagination import defaults
+
+def get_setting(name):
+    """Look for a setting by its name prepended by "PAGINATION_" or use its default value."""
+    return getattr(settings, "PAGINATION_%s" % name, getattr(defaults, name))
 
 
 def do_autopaginate(parser, token):
@@ -140,9 +143,9 @@ class AutoPaginateNode(Node):
         context_var=None,
     ):
         if paginate_by is None:
-            paginate_by = DEFAULT_PAGINATION
+            paginate_by = get_setting("DEFAULT_PAGINATION")
         if orphans is None:
-            orphans = DEFAULT_ORPHANS
+            orphans = get_setting("DEFAULT_ORPHANS")
         self.queryset_var = Variable(queryset_var)
         if isinstance(paginate_by, int):
             self.paginate_by = paginate_by
@@ -186,7 +189,7 @@ class AutoPaginateNode(Node):
         try:
             page_obj = paginator.page(request.page(page_suffix))
         except InvalidPage:
-            if INVALID_PAGE_RAISES_404:
+            if get_setting("INVALID_PAGE_RAISES_404"):
                 raise Http404(
                     "Invalid page requested.  If DEBUG were set to "
                     + "False, an HTTP 404 page would have been shown instead."
@@ -241,7 +244,7 @@ def do_paginate(parser, token):
     return PaginateNode(template)
 
 
-def paginate(context, window=DEFAULT_WINDOW, margin=DEFAULT_MARGIN):
+def paginate(context, window=None, margin=None):
     """
     Renders the ``pagination/pagination.html`` template, resulting in a
     Digg-like display of the available pages, given the current page.  If there
@@ -276,11 +279,14 @@ def paginate(context, window=DEFAULT_WINDOW, margin=DEFAULT_MARGIN):
         window=2, margin=0, current=5     ... 3 4 [5] 6 7 ...
         window=2, margin=0, current=11     ... 7 8 9 10 [11]
         """
-
+    window = get_setting("DEFAULT_WINDOW") if window is None else window
     if window < 0:
         raise ValueError('Parameter "window" cannot be less than zero')
+
+    margin = get_setting("DEFAULT_MARGIN") if margin is None else margin
     if margin < 0:
         raise ValueError('Parameter "margin" cannot be less than zero')
+
     try:
         paginator = context["paginator"]
         page_obj = context["page_obj"]
@@ -332,17 +338,17 @@ def paginate(context, window=DEFAULT_WINDOW, margin=DEFAULT_MARGIN):
         new_context = {
             "MEDIA_URL": settings.MEDIA_URL,
             "STATIC_URL": getattr(settings, "STATIC_URL", None),
-            "disable_link_for_first_page": DISABLE_LINK_FOR_FIRST_PAGE,
-            "display_disabled_next_link": DISPLAY_DISABLED_NEXT_LINK,
-            "display_disabled_previous_link": DISPLAY_DISABLED_PREVIOUS_LINK,
-            "display_page_links": DISPLAY_PAGE_LINKS,
+            "disable_link_for_first_page": get_setting("DISABLE_LINK_FOR_FIRST_PAGE"),
+            "display_disabled_next_link": get_setting("DISPLAY_DISABLED_NEXT_LINK"),
+            "display_disabled_previous_link": get_setting("DISPLAY_DISABLED_PREVIOUS_LINK"),
+            "display_page_links": get_setting("DISPLAY_PAGE_LINKS"),
             "is_paginated": paginator.count > paginator.per_page,
-            "next_link_decorator": NEXT_LINK_DECORATOR,
+            "next_link_decorator": get_setting("NEXT_LINK_DECORATOR"),
             "page_obj": page_obj,
             "page_suffix": page_suffix,
             "pages": pages,
             "paginator": paginator,
-            "previous_link_decorator": PREVIOUS_LINK_DECORATOR,
+            "previous_link_decorator": get_setting("PREVIOUS_LINK_DECORATOR"),
             "records": records,
         }
         if "request" in context:
