@@ -53,7 +53,8 @@ except ImportError:  # Django < 2.0
 from django.template.loader import select_template
 from django.utils.text import unescape_string_literal
 
-from dj_pagination import defaults
+from .. import defaults, exceptions
+
 
 def get_setting(name):
     """Look for a setting by its name prepended by "PAGINATION_" or use its default value."""
@@ -194,9 +195,17 @@ class AutoPaginateNode(Node):
                     "Invalid page requested.  If DEBUG were set to "
                     + "False, an HTTP 404 page would have been shown instead."
                 )
-            context[key] = []
-            context["invalid_page"] = True
-            return ""
+            if get_setting("INVALID_PAGE_TRIGGERS_301"):
+                getvars = request.GET.copy()
+                if "page%s" % page_suffix in getvars:
+                    del getvars["page%s" % page_suffix]
+                getvars = "?%s" % getvars.urlencode() if len(getvars.keys()) > 0 else ""
+                url = "%s%s" % (request.path, getvars)
+                raise exceptions.PaginationRedirect(url)
+            else:
+                context[key] = []
+                context["invalid_page"] = True
+                return ""
         if self.context_var is not None:
             context[self.context_var] = page_obj.object_list
         else:

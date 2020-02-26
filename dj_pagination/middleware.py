@@ -28,11 +28,14 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+from django.shortcuts import redirect
 
 try:
     from django.utils.deprecation import MiddlewareMixin
 except ImportError:
     MiddlewareMixin = object
+
+from .exceptions import PaginationRedirect
 
 
 def get_page(self, suffix):
@@ -59,3 +62,7 @@ class PaginationMiddleware(MiddlewareMixin):
 
     def process_request(self, request):
         request.__class__.page = get_page
+
+    def process_exception(self, request, exception):
+        if isinstance(exception, PaginationRedirect):
+            return redirect(exception.url, permanent=True)

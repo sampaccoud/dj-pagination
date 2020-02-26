@@ -28,11 +28,10 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 from django.core.paginator import Paginator
-from django.http import HttpRequest as DjangoHttpRequest
+from django.http import Http404, HttpRequest as DjangoHttpRequest, QueryDict
 from django.template import Template, Context
-
+from django.test import override_settings
 try:
     from django.test import SimpleTestCase
 except ImportError:  # Django 1.2 compatible
@@ -40,8 +39,8 @@ except ImportError:  # Django 1.2 compatible
 
 from dj_pagination.paginator import InfinitePaginator, FinitePaginator
 from dj_pagination.templatetags.pagination_tags import paginate
-from dj_pagination.middleware import PaginationMiddleware
-
+from dj_pagination import middleware
+from dj_pagination.exceptions import PaginationRedirect
 
 class HttpRequest(DjangoHttpRequest):
     page = lambda self, suffix: 1
@@ -322,6 +321,42 @@ class TemplateRenderingTestCase(SimpleTestCase):
         self.assertIn('<a href="?page_var2=2"', content)
         self.assertIn('<a href="?page_var=2"', content)
 
+    def test_invalid_page_fail_silently(self):
+        t = Template(
+            "{% load pagination_tags %}"
+            "{% autopaginate var %}{% paginate %}invalid:{{ invalid_page }}"
+        )
+        request = DjangoHttpRequest()
+        request.GET = QueryDict("a=2&page=3")
+        content = t.render(Context({"var": range(21), "request": request}))
+        self.assertNotIn('<div class="pagination">', content)
+        self.assertIn('invalid:True', content)
+
+    @override_settings(PAGINATION_INVALID_PAGE_TRIGGERS_301=True)
+    def test_invalid_page_redirect_only_page(self):
+        t = Template("{% load pagination_tags %}{% autopaginate var %}{% paginate %}")
+        request = DjangoHttpRequest()
+        request.GET = QueryDict("page=3")
+        with self.assertRaises(PaginationRedirect) as e:
+          t.render(Context({"var": range(21), "request": request}))
+        self.assertEqual(e.exception.url, '')
+
+    @override_settings(PAGINATION_INVALID_PAGE_TRIGGERS_301=True)
+    def test_invalid_page_redirect_other_parameters(self):
+        t = Template("{% load pagination_tags %}{% autopaginate var %}{% paginate %}")
+        request = DjangoHttpRequest()
+        request.GET = QueryDict("a=2&page=3")
+        with self.assertRaises(PaginationRedirect) as e:
+          t.render(Context({"var": range(21), "request": request}))
+        self.assertEqual(e.exception.url, '?a=2')
+
+    @override_settings(PAGINATION_INVALID_PAGE_RAISES_404=True)
+    def test_invalid_page_raise_404(self):
+        t = Template("{% load pagination_tags %}{% autopaginate var %}{% paginate %}")
+        request = DjangoHttpRequest()
+        request.GET = QueryDict("a=2&page=3")
+        with self.assertRaises(Http404):
+            t.render(Context({"var": range(21), "request": request}))
 
 class InfinitePaginatorTestCase(SimpleTestCase):
     def setUp(self):
@@ -424,7 +459,24 @@ class MiddlewareTestCase(SimpleTestCase):
     """
 
     def test_get_page_in_request(self):
-        middleware = PaginationMiddleware()
+        middleware_instance = middleware.PaginationMiddleware()
         request = DjangoHttpRequest()
-        middleware.process_request(request)
+        middleware_instance.process_request(request)
         self.assertEqual(request.page(""), 1)
+
+    def test_get_page_in_request_exception(self):
+        # We are mocking the redirect method without unittest mock as it is
+        # difficult to add it to the project for Python 2 and 3
+        def mock_redirect(url, permanent):
+            return url, permanent
+
+        middleware_instance = middleware.PaginationMiddleware()
+        request = DjangoHttpRequest()
+        exception = PaginationRedirect("example.com")
+        origin_redirect = middleware.redirect
+        try:
+            middleware.redirect = mock_redirect
+            response = middleware_instance.process_exception(request, exception)
+            self.assertEqual(response, ('example.com', True))
+        finally:
+            middleware.redirect = origin_redirect

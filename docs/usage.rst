@@ -153,6 +153,12 @@ behavior of the pagination tags.  Here's an overview:
     ``invalid_page`` context variable.  ``True`` does the former and ``False``
     does the latter. Defaults to False
 
+``PAGINATION_INVALID_PAGE_TRIGGERS_301``
+    Determines whether an invalid page triggers a 301 redirect to page 1 or just
+    sets the ``invalid_page`` context variable.  ``True`` does the former and
+    ``False`` does the latter. Defaults to False. Only active if
+    ``PAGINATION_INVALID_PAGE_RAISES_404`` is set to False.
+
 ``PAGINATION_DISPLAY_PAGE_LINKS``
     If set to ``False``, links for single pages will not be displayed. Defaults to True.
 
